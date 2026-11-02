@@ -2,7 +2,7 @@
 
 A pre-deployment network check for venue IT teams. Run it before the VPU
 arrives to confirm the firewall rules from the NFHS Network firewall article
-are actually in place, and send the report to NFHS Network support.
+are actually in place.
 
 It runs the same probes Pulse runs on a live VPU (ported from
 `playon/pulse` `Pulse.Web/scripts/`), so a pass here means the same as a pass in
@@ -25,10 +25,6 @@ Pulse.
 4. The report opens in your browser. It starts with a verdict (**Ready**,
    **Ready, with items to check**, or **Not ready**) and a line per service.
    Fix anything under **Changes needed**, starting at row 1, then run it again.
-5. Send the `.html` report from the `reports` folder to NFHS Network support
-   at help.nfhsnetwork.com. Next to it is a `.json` copy of the results, and
-   the `logs` folder has a `.log` file with timings and errors, which support
-   may ask for.
 
 No install and no admin rights needed. It makes outbound connections only.
 

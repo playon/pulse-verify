@@ -706,6 +706,7 @@ function Invoke-PreTestQuestions($Endpoints, [bool]$OnPixellot, [string]$PresetV
     Write-Host ''
     Write-Wrapped 'The firewall rules the Pixellot needs are in the NFHS Network article below, and the report will list them too.'
     if ($Endpoints.docUrl) { Write-Host "  $($Endpoints.docUrl)" }
+    Write-Host ''
     $ans.rulesConfigured = Read-Answer 'Has your network team set up these firewall rules for the Pixellot?'
     if ($ans.rulesConfigured -ne 'yes') {
         Write-Wrapped 'No problem: the test will show what is blocked right now, which works as a to-do list.' '  '
@@ -721,6 +722,7 @@ function Invoke-PreTestQuestions($Endpoints, [bool]$OnPixellot, [string]$PresetV
         Write-Host ''
         Write-Wrapped ("The Pixellot needs at least $min Mbps download and $min Mbps upload, steadily, to stream. The speed test measures this in up to 20 seconds using speed.cloudflare.com. " +
             'While it runs it uses as much of the connection as it can, and it transfers up to about 60 MB. Skip it if the connection is metered (cellular) or busy with something that can''t be slowed down.')
+        Write-Host ''
         $ans.speedTest = Read-Answer 'Run the speed test?' -NoUnsure
         if ($ans.speedTest -eq 'no') {
             Write-Wrapped "Skipped. Confirm another way that the Pixellot's connection has at least $min Mbps each way. The report will note that speed was not measured." '  ' 'Yellow'
@@ -1396,18 +1398,21 @@ if ($changes) {
     }
 }
 
-Write-Host ''
-Write-Host 'Next steps'
+$steps = @()
 if ($changes) {
-    Write-Wrapped 'Open the full report for the evidence behind each change: the IP addresses tried, the times (to match your firewall logs) and certificate details.' '    ' '' '  - '
-    Write-Wrapped 'After making the changes, run Run-PulseVerify.bat again.' '    ' '' '  - '
+    $steps += 'Open the full report for the evidence behind each change: the IP addresses tried, the times (to match your firewall logs) and certificate details.'
+    $steps += 'After making the changes, run Run-PulseVerify.bat again.'
 }
 if ($endpoints.speedTest -and -not $runSpeed) {
-    Write-Wrapped "The speed test was skipped. The Pixellot needs at least $($endpoints.speedTest.minMbps) Mbps download and upload; confirm this another way." '    ' '' '  - '
+    $steps += "The speed test was skipped. The Pixellot needs at least $($endpoints.speedTest.minMbps) Mbps download and upload; confirm this another way."
 }
-Write-Wrapped 'Send the report file from the reports folder to NFHS Network support at help.nfhsnetwork.com. They may also ask for the .log file in the logs folder.' '    ' '' '  - '
 if ($addresses) {
-    Write-Wrapped 'If the firewall needs IP addresses instead of domain names, the report lists the current addresses for each domain.' '    ' '' '  - '
+    $steps += 'If the firewall needs IP addresses instead of domain names, the report lists the current addresses for each domain.'
+}
+if ($steps) {
+    Write-Host ''
+    Write-Host 'Next steps'
+    foreach ($s in $steps) { Write-Wrapped $s '    ' '' '  - ' }
 }
 Write-Host ''
 Write-Host 'Report saved to:'
