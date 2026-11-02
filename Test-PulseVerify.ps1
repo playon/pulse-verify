@@ -19,9 +19,9 @@
     folder next to this script. The .log always goes in a logs folder next
     to this script.
 .PARAMETER Venue
-    Optional venue / school name printed on the report. Asked for if omitted.
+    Optional venue / school name printed on the report. Never asked for.
 .PARAMETER PixellotId
-    Optional Pixellot ID from the unit's label. Asked for if omitted; on a
+    Optional Pixellot ID from the unit's label. Never asked for; on a
     Pixellot itself it defaults to the computer name.
 .PARAMETER SkipQuestions
     Skip the pre-test questions (for scripted or remote runs). The report
@@ -638,16 +638,6 @@ function Read-Answer([string]$Question, [switch]$NoUnsure) {
     }
 }
 
-function Read-Venue {
-    # Support files reports by venue, so a throwaway answer like "2" is not
-    # accepted: at least 3 characters including a letter.
-    while ($true) {
-        $v = ([string](Read-Host 'Venue or school name')).Trim()
-        if ($v.Length -ge 3 -and $v -match '[A-Za-z]') { Write-Log "Venue entered: $v"; return $v }
-        Write-Host '  Please enter the venue or school name, for example "Lincoln High School gym".' -ForegroundColor Yellow
-    }
-}
-
 function Test-OnPixellot {
     # The Pixellot's own software lives here. Running on the unit itself means
     # the results are the Pixellot's own network, so the VLAN question is moot.
@@ -663,22 +653,10 @@ function Invoke-PreTestQuestions($Endpoints, [bool]$OnPixellot, [string]$PresetV
     # follow-up hint together as one block.
     Write-Section 'A few questions'
     Write-Host 'Answer Y (yes), N (no), or ? if you are not sure.'
-    Write-Host ''
-    $ans.venue = if ($PresetVenue) { $PresetVenue } else { Read-Venue }
-    if ($PresetId) {
-        $ans.pixellotId = $PresetId
-    }
-    elseif ($OnPixellot) {
-        $default = [Environment]::MachineName
-        Write-Host ''
-        $id = ([string](Read-Host "Pixellot ID from the label on the unit [press Enter for $default]")).Trim()
-        $ans.pixellotId = if ($id) { $id } else { $default }
-    }
-    else {
-        Write-Host ''
-        $ans.pixellotId = ([string](Read-Host 'Pixellot ID from the label on the unit (optional, press Enter to skip)')).Trim()
-    }
-    if ($ans.pixellotId) { Write-Log "Pixellot ID: $($ans.pixellotId)" }
+    # Venue and Pixellot ID are not asked; they come from -Venue and
+    # -PixellotId, and on a Pixellot the ID defaults to the computer name.
+    $ans.venue = $PresetVenue
+    $ans.pixellotId = if ($PresetId) { $PresetId } elseif ($OnPixellot) { [Environment]::MachineName } else { '' }
 
     Write-Host ''
     if ($OnPixellot) {
@@ -916,8 +894,10 @@ function Write-HtmlReport($Report, [string]$Path) {
         'Public IP'   = $(if ($c.publicIp) { $c.publicIp } else { 'Could not be determined' })
     }
     $netHtml = ($net.Keys | ForEach-Object { "<dt>$_</dt><dd>" + $(if ($net[$_]) { & $h $net[$_] } else { '&mdash;' }) + '</dd>' }) -join ''
-    $ansHtml = "<dt>Venue</dt><dd>$(& $h $(if ($q.venue) { $q.venue } else { 'Not given' }))</dd>" +
-        "<dt>Pixellot ID</dt><dd>$(& $h $(if ($q.pixellotId) { $q.pixellotId } else { 'Not given' }))</dd>" +
+    # Venue and Pixellot ID are shown only when given (-Venue, -PixellotId,
+    # or the computer name on a Pixellot).
+    $ansHtml = $(if ($q.venue) { "<dt>Venue</dt><dd>$(& $h $q.venue)</dd>" } else { '' }) +
+        $(if ($q.pixellotId) { "<dt>Pixellot ID</dt><dd>$(& $h $q.pixellotId)</dd>" } else { '' }) +
         "<dt>Same VLAN as the Pixellot</dt><dd>$(& $fmt $q.sameVlan)</dd>" +
         "<dt>Pixellot on its own VLAN</dt><dd>$(& $fmt $q.dedicatedVlan)</dd>" +
         "<dt>Firewall rules set up</dt><dd>$(& $fmt $q.rulesConfigured)</dd>" +
@@ -997,9 +977,11 @@ function Write-HtmlReport($Report, [string]$Path) {
 
     # ---- page
     $stateWord = @{ 'not-ready' = 'NOT READY'; 'issues' = 'READY WITH ITEMS TO CHECK'; 'ready' = 'READY' }[$v.state]
-    $venue = if ($Report.venue) { $Report.venue } else { 'Venue not given' }
-    $idPart = if ($q.pixellotId) { " - $($q.pixellotId)" } else { '' }
-    $title = "VPU Network Check - $venue$idPart - $stateWord - $($Report.timestamp.Substring(0, 10))"
+    # @() so that with neither given this is an empty array, not $null.
+    $who = @(@($Report.venue, $q.pixellotId) | Where-Object { $_ })
+    $title = (@('VPU Network Check') + $who + @($stateWord, $Report.timestamp.Substring(0, 10))) -join ' - '
+    $metaWho = @(@($Report.venue, $(if ($q.pixellotId) { 'Pixellot ' + $q.pixellotId })) | Where-Object { $_ } | ForEach-Object { & $h $_ })
+    $meta = ($metaWho + @((& $h $Report.timestamp), ('run from ' + (& $h $c.computer)))) -join ' &middot; '
     $files = [System.IO.Path]::GetFileNameWithoutExtension($Path)
     $html = @"
 <!doctype html>
@@ -1099,7 +1081,7 @@ dl,.note,.meta,summary,footer{line-height:1.5}
 }
 </style></head><body><main>
 <header><h1>VPU Network Check</h1>
-<p class="meta">$(& $h $venue)$(if ($q.pixellotId) { ' &middot; Pixellot ' + (& $h $q.pixellotId) }) &middot; $(& $h $Report.timestamp) &middot; run from $(& $h $c.computer)</p></header>
+<p class="meta">$meta</p></header>
 $verdictHtml
 $changesHtml
 $contextHtml
