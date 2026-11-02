@@ -82,6 +82,17 @@ function Write-Wrapped([string]$Text, [string]$Indent = '', [string]$Color = '',
     }
 }
 
+# A titled rule between phases ("-- Title -----", 78 wide). The rule is
+# dim so it separates without competing with the text; the blank lines
+# around it give each phase room.
+function Write-Section([string]$Title) {
+    Write-Host ''
+    Write-Host '-- ' -ForegroundColor DarkGray -NoNewline
+    Write-Host $Title -ForegroundColor Cyan -NoNewline
+    Write-Host (' ' + ('-' * [Math]::Max(3, 74 - $Title.Length))) -ForegroundColor DarkGray
+    Write-Host ''
+}
+
 function Resolve-OutDir([string]$Requested, [string]$Fallback) {
     # Clean up what a launcher may pass: cmd's "%~dp0" ends in a backslash
     # that escapes the closing quote, leaving a literal " on the end, which
@@ -593,8 +604,7 @@ function Get-IpConfig {
 }
 
 function Show-IpConfig($Rows) {
-    Write-Host ''
-    Write-Host "This computer's IP configuration:" -ForegroundColor Cyan
+    Write-Section "This computer's IP configuration"
     if (-not $Rows -or $Rows.Count -eq 0) { Write-Host '  Not found: no adapter has a default gateway (or this is not Windows).' -ForegroundColor Yellow; return }
     foreach ($r in $Rows) {
         Write-Host "  $($r.adapter)  (internet connection)" -ForegroundColor White
@@ -606,6 +616,8 @@ function Show-IpConfig($Rows) {
         Write-Host ("    DNS 1        {0}" -f $r.dns1)
         Write-Host ("    DNS 2        {0}" -f $(if ($r.dns2) { $r.dns2 } else { 'None' }))
     }
+    Write-Host ''
+    Write-Wrapped 'Note: verify this IP configuration matches the Pixellot''s network before continuing with the test.' '' 'Yellow'
 }
 
 # ---------------------------------------------------------------- questions
@@ -647,8 +659,10 @@ function Invoke-PreTestQuestions($Endpoints, [bool]$OnPixellot, [string]$PresetV
     # on the wrong network. Returns $null if the person chose to stop.
     $ans = [ordered]@{ venue = $null; pixellotId = $null; sameVlan = $null; dedicatedVlan = $null; rulesConfigured = $null; speedTest = $null }
 
-    Write-Host ''
-    Write-Host 'A few questions first. Answer Y (yes), N (no), or ? if you are not sure.' -ForegroundColor Cyan
+    # A blank line before each question keeps every question and its
+    # follow-up hint together as one block.
+    Write-Section 'A few questions'
+    Write-Host 'Answer Y (yes), N (no), or ? if you are not sure.'
     Write-Host ''
     $ans.venue = if ($PresetVenue) { $PresetVenue } else { Read-Venue }
     if ($PresetId) {
@@ -656,17 +670,20 @@ function Invoke-PreTestQuestions($Endpoints, [bool]$OnPixellot, [string]$PresetV
     }
     elseif ($OnPixellot) {
         $default = [Environment]::MachineName
+        Write-Host ''
         $id = ([string](Read-Host "Pixellot ID from the label on the unit [press Enter for $default]")).Trim()
         $ans.pixellotId = if ($id) { $id } else { $default }
     }
     else {
+        Write-Host ''
         $ans.pixellotId = ([string](Read-Host 'Pixellot ID from the label on the unit (optional, press Enter to skip)')).Trim()
     }
     if ($ans.pixellotId) { Write-Log "Pixellot ID: $($ans.pixellotId)" }
 
+    Write-Host ''
     if ($OnPixellot) {
         $ans.sameVlan = 'self'
-        Write-Host '  This is running on the Pixellot itself, so the results are its own network.' -ForegroundColor Green
+        Write-Host 'This is running on the Pixellot itself, so the results are its own network.' -ForegroundColor Green
         Write-Log 'Running on a Pixellot: same-VLAN question skipped'
     }
     else {
@@ -680,6 +697,7 @@ function Invoke-PreTestQuestions($Endpoints, [bool]$OnPixellot, [string]$PresetV
         }
     }
 
+    Write-Host ''
     $ans.dedicatedVlan = Read-Answer 'Is the Pixellot on its own VLAN (separate from staff and students)?'
     if ($ans.dedicatedVlan -ne 'yes') {
         Write-Wrapped 'Recommended: its own VLAN keeps streaming traffic away from the content filters and bandwidth limits used for staff and student devices.' '  ' 'Yellow'
@@ -690,7 +708,7 @@ function Invoke-PreTestQuestions($Endpoints, [bool]$OnPixellot, [string]$PresetV
     if ($Endpoints.docUrl) { Write-Host "  $($Endpoints.docUrl)" }
     $ans.rulesConfigured = Read-Answer 'Has your network team set up these firewall rules for the Pixellot?'
     if ($ans.rulesConfigured -ne 'yes') {
-        Write-Wrapped 'No problem: the test will show what is blocked right now, which works as a to-do list.' '  ' 'Yellow'
+        Write-Wrapped 'No problem: the test will show what is blocked right now, which works as a to-do list.' '  '
     }
 
     # Opt-in: the speed test fills the connection for up to 20 s, which
@@ -701,8 +719,8 @@ function Invoke-PreTestQuestions($Endpoints, [bool]$OnPixellot, [string]$PresetV
     elseif ($Endpoints.speedTest) {
         $min = $Endpoints.speedTest.minMbps
         Write-Host ''
-        Write-Wrapped "The Pixellot needs at least $min Mbps download and $min Mbps upload, steadily, to stream. The speed test measures this in up to 20 seconds using speed.cloudflare.com."
-        Write-Wrapped 'While it runs it uses as much of the connection as it can, and it transfers up to about 60 MB. Skip it if the connection is metered (cellular) or busy with something that can''t be slowed down.'
+        Write-Wrapped ("The Pixellot needs at least $min Mbps download and $min Mbps upload, steadily, to stream. The speed test measures this in up to 20 seconds using speed.cloudflare.com. " +
+            'While it runs it uses as much of the connection as it can, and it transfers up to about 60 MB. Skip it if the connection is metered (cellular) or busy with something that can''t be slowed down.')
         $ans.speedTest = Read-Answer 'Run the speed test?' -NoUnsure
         if ($ans.speedTest -eq 'no') {
             Write-Wrapped "Skipped. Confirm another way that the Pixellot's connection has at least $min Mbps each way. The report will note that speed was not measured." '  ' 'Yellow'
@@ -1197,13 +1215,13 @@ else {
 $Venue = $answers.venue
 Write-Log "Venue: $Venue  Pixellot ID: $($answers.pixellotId)"
 
-Write-Host ''
+Write-Section 'Checks'
 Write-Host "Gathering network context..."
 $context = Get-NetContext
 $script:Resolver = if ($context.dns) { ($context.dns -split ',\s*')[0] } else { $null }
 Write-Log ("Context: connection {0}, local IP {1}, gateway {2}, DNS {3}, public IP {4}" -f $context.connection, $context.localIp, $context.gateway, $context.dns, $context.publicIp)
 if ($context.connection -eq 'Wi-Fi') {
-    Write-Host 'Note: this computer is on Wi-Fi. A wired connection on the Pixellot''s port gives a more reliable answer.' -ForegroundColor Yellow
+    Write-Wrapped 'Note: this computer is on Wi-Fi. A wired connection on the Pixellot''s port gives a more reliable answer.' '' 'Yellow'
 }
 
 $results = New-Object System.Collections.Generic.List[object]
@@ -1267,16 +1285,18 @@ $runSpeed = [bool]$endpoints.speedTest -and $answers.speedTest -ne 'no'
 if ($endpoints.speedTest -and -not $runSpeed) { Write-Log 'Speed test skipped' }
 $checkCount = @($endpoints.dns).Count + @($endpoints.ports).Count + @($endpoints.tls).Count + $(if ($runSpeed) { 2 } else { 0 })
 $estimate = if ($runSpeed) { 'about 40 seconds' } else { 'about 30 seconds' }
-Write-Host ''
-Write-Host "Running $checkCount checks. This takes $estimate." -ForegroundColor Cyan
+Write-Host "Running $checkCount checks. This takes $estimate."
 Write-Host ''
 Write-Host 'Name lookups (DNS)'
 foreach ($e in $endpoints.dns)   { Invoke-Check $e.host $e { Test-Dns $e } }
+Write-Host ''
 Write-Host 'Ports'
 foreach ($e in $endpoints.ports) { Invoke-Check ("{0} {1,-5} {2}" -f $e.protocol, $e.port, $e.host) $e { Test-Port $e } }
+Write-Host ''
 Write-Host 'HTTPS and SSL inspection'
 foreach ($e in $endpoints.tls)   { Invoke-Check $e.host $e { Test-Tls $e } }
 if ($runSpeed) {
+    Write-Host ''
     Write-Host "Speed (at least $($endpoints.speedTest.minMbps) Mbps each way)"
     foreach ($dir in 'Download', 'Upload') {
         Invoke-Check $dir $endpoints.speedTest { Test-Speed $endpoints.speedTest $dir }
@@ -1287,6 +1307,7 @@ if ($runSpeed) {
 # domain, for firewalls that take IPs instead of names.
 $addresses = @()
 if ($endpoints.requirements.domains) {
+    Write-Host ''
     Write-Host 'Looking up current IP addresses for the report'
     $addresses = @(Get-DomainAddresses $endpoints)
     $addressTime = Get-Date -Format 'HH:mm'
@@ -1341,8 +1362,7 @@ $verdictColor = @{ 'not-ready' = 'Red'; 'issues' = 'Yellow'; 'ready' = 'Green' }
 $svcTag = @{ ok = '[ OK ]'; fail = '[FAIL]'; check = '[WARN]' }
 $svcTagColor = @{ ok = 'Green'; fail = 'Red'; check = 'Yellow' }
 
-Write-Host ''
-Write-Host ('-' * 78)
+Write-Section 'Result'
 Write-Wrapped $verdict.headline.ToUpper() '' $verdictColor
 Write-Wrapped $verdict.detail
 Write-Host ''
@@ -1365,6 +1385,8 @@ if ($changes) {
     Write-Host $(if ($verdict.state -eq 'issues') { 'Items to check' } else { 'Changes needed, most severe first' })
     $n = 0
     foreach ($g in $changes) {
+        # Each change wraps over several lines, so a gap keeps them apart.
+        if ($n -gt 0) { Write-Host '' }
         $n++
         $sevColor = if ($g.rank -eq 0) { 'Red' } elseif ($g.rank -eq 1) { 'Yellow' } else { 'Gray' }
         Write-Host ("  {0}. " -f $n) -NoNewline

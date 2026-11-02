@@ -14,6 +14,9 @@ Pulse.
    (same VLAN, same switch port profile, same firewall policy). Guest Wi-Fi or
    a staff VLAN will give you the wrong answer.
 2. Unzip this folder and double-click `Run-PulseVerify.bat`.
+   **Note:** the tool first shows this computer's IP configuration. Verify it
+   matches the Pixellot's network (IP range, gateway, DNS) before continuing
+   with the test.
 3. Answer the questions: venue, the Pixellot ID from its label (optional),
    whether this computer is on the Pixellot's VLAN, whether the Pixellot has
    its own VLAN, whether the firewall rules are set up, and whether to run the
