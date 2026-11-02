@@ -3,7 +3,7 @@
   "source": "Ported from playon/pulse Pulse.Web/scripts (Test-NetworkDomains, Test-NetworkPorts, Test-TlsInspection). Port list audited against Canopy connections.csv.",
   "notes": [
     "Zixi streaming goes to a broadcaster assigned per event from AWS pools, not to prod-echo. Allow UDP 443/2088 by port, not by destination IP.",
-    "Streaming failover chain: Zixi UDP/2088 -> Zixi UDP/443 -> RTMP TCP/1935. Either UDP path alone is a healthy stream; RTMP is a degraded last resort.",
+    "Streaming failover chain: Zixi UDP/2088 -> Zixi UDP/443 -> RTMP TCP/1935. Either UDP path alone is a healthy stream; RTMP is a degraded last resort. Each streaming probe's \"path\" names its place in the chain, and the probes are listed in chain order.",
     "balena-cloud.com hosts come from Balena's published list (https://api.balena-cloud.com/os/v1/network-endpoints, checked 2026-10-30). Balena says the list can change; *.balena-cloud.com on TCP 443 is their recommended rule. vpn.balena-cloud.com no longer resolves; cloudlink replaced it."
   ],
   "severityLevels": {
@@ -226,6 +226,7 @@
       "probe": "echo",
       "rule": "Allow outbound UDP 2088 to *.pixellot.stream and *.pixellot.tv. Streaming servers are assigned per event from changing cloud addresses, so use domain rules, not IP addresses. prod-echo.pixellot.tv is the Pixellot's own port test, which is what this check uses.",
       "service": "streaming",
+      "path": "primary",
       "severity": "critical",
       "consequence": "Primary streaming path. If only this is blocked, the stream falls back to UDP 443, then to RTMP (TCP 1935), which starts about 4 minutes late.",
       "domain": "*.pixellot.stream, *.pixellot.tv"
@@ -238,6 +239,7 @@
       "probe": "echo",
       "rule": "Allow outbound UDP 443 to *.pixellot.stream and *.pixellot.tv. Streaming servers are assigned per event from changing cloud addresses, so use domain rules, not IP addresses. prod-echo.pixellot.tv is the Pixellot's own port test, which is what this check uses.",
       "service": "streaming",
+      "path": "backup",
       "severity": "high",
       "consequence": "Backup streaming path, used when UDP 2088 is blocked. If both are blocked, the stream falls back to RTMP (TCP 1935).",
       "domain": "*.pixellot.stream, *.pixellot.tv"
@@ -248,8 +250,9 @@
       "host": "a.rtmp.youtube.com",
       "purpose": "RTMP fallback",
       "probe": "connect",
-      "rule": "Allow outbound TCP 1935 to *.pixellot.stream (the RTMP fallback servers). They exist only during events, so this check tests TCP 1935 to a public RTMP server instead: a pass proves the port is open, not that *.pixellot.stream is allowed.",
+      "rule": "Allow outbound TCP 1935 to any destination. The RTMP fallback servers (*.pixellot.stream) exist only during events, so a rule limited to them cannot be tested ahead of time, by you or by this check. This check connects to a public RTMP server (a.rtmp.youtube.com), which a port rule lets through.",
       "service": "streaming",
+      "path": "last resort",
       "severity": "high",
       "consequence": "Last-resort streaming path. If UDP 2088, UDP 443 and this are all blocked, the broadcast never goes on air.",
       "domain": "*.pixellot.stream"

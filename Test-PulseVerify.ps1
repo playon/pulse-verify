@@ -727,10 +727,39 @@ function Get-SeverityRank([string]$Severity) {
     switch ($Severity) { 'critical' { 0 } 'high' { 1 } 'medium' { 2 } default { 3 } }
 }
 
+function Get-StreamPathSummary($Mine) {
+    # Streaming has three paths tried in order (primary, backup, last
+    # resort), so what a block means depends on which path still gets
+    # through. Says which are blocked and which the stream would use;
+    # returns nothing when no blocked check is part of the chain.
+    $paths = @($Mine | Where-Object { $_.path })
+    $blocked = @($paths | Where-Object { $_.status -eq 'fail' })
+    if ($blocked.Count -eq 0) { return $null }
+    $label = { param($r) "$(($r.target -split ' -> ')[0]) ($($r.path))" }
+    $names = @($blocked | ForEach-Object { & $label $_ })
+    $list = if ($names.Count -le 2) { $names -join ' and ' } else { ($names[0..($names.Count - 2)] -join ', ') + ' and ' + $names[-1] }
+    $verb = if ($names.Count -eq 1) { 'is' } else { 'are' }
+    $use = $paths | Where-Object { $_.status -eq 'pass' } | Select-Object -First 1
+    $then = if (-not $use) {
+        'so the broadcast cannot go on air.'
+    }
+    elseif ($use -eq $paths[0]) {
+        "so the stream has less to fall back on if the $($use.path) path drops."
+    }
+    elseif ($use -eq $paths[-1]) {
+        "so streams would fall back to $(& $label $use) and start about 4 minutes late."
+    }
+    else {
+        "so streams would fall back to $(& $label $use)."
+    }
+    return "$list $verb blocked, $then Open every streaming path before go-live."
+}
+
 function Get-Verdict($Results, $Services) {
     # Strict by design: any critical or high failure is Not ready, including
-    # UDP 2088 alone even though the stream would fall back to UDP 443. The
-    # per-service lines carry that nuance; the verdict does not soften it.
+    # UDP 2088 alone even though the stream would fall back to UDP 443. New
+    # sites should start with every port open. The per-service lines carry
+    # the nuance; the verdict does not soften it.
     $blocking = @($Results | Where-Object { $_.status -eq 'fail' -and (Get-SeverityRank $_.severity) -le 1 })
     $other    = @($Results | Where-Object { ($_.status -eq 'fail' -and (Get-SeverityRank $_.severity) -ge 2) -or $_.status -eq 'warn' })
 
@@ -743,10 +772,13 @@ function Get-Verdict($Results, $Services) {
         if ($bad.Count -gt 0) {
             # The first failure's own consequence beats the generic service
             # line: "falls back to UDP 443" says more than "cannot stream".
+            # Streaming paths are judged together, since the outcome depends
+            # on which path still gets through.
             $why = ($bad | Where-Object { $_.consequence } | Select-Object -First 1).consequence
             if (-not $why) { $why = $s.blocked }
             $status = 'fail'
-            $summary = "$($bad.Count) of $(Format-Count $mine.Count 'check' 'checks') failed. $why"
+            $summary = Get-StreamPathSummary $mine
+            if (-not $summary) { $summary = "$($bad.Count) of $(Format-Count $mine.Count 'check' 'checks') failed. $why" }
         }
         elseif ($check.Count -gt 0) {
             $status = 'check'
@@ -1259,6 +1291,7 @@ function Invoke-Check([string]$Label, $Entry, [scriptblock]$Check) {
     # Time of day lets the admin find the matching entry in firewall logs.
     $r | Add-Member -NotePropertyName time        -NotePropertyValue $startedAt
     $r | Add-Member -NotePropertyName domain      -NotePropertyValue $Entry.domain
+    $r | Add-Member -NotePropertyName path        -NotePropertyValue $Entry.path
     Write-Host $ConsoleTag[$r.status] -ForegroundColor $ConsoleTagColor[$r.status] -NoNewline
     Write-Host (' ' + (Get-ShortNote $r))
     Write-Log ("{0,-5} {1,-45} {2,-4} {3,-8} {4,6} ms  {5,-15} {6,-11} {7}" -f $r.category, $r.target, $r.status.ToUpper(), $r.severity, $sw.ElapsedMilliseconds, $r.ip, $r.outcome, $r.detail)
