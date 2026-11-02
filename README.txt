@@ -20,8 +20,11 @@ How to run it
 
 2. Before unzipping, right-click the zip, choose Properties, tick Unblock
    and click OK. Otherwise Windows may warn about running a file from the
-   internet. If you see "Windows protected your PC", click More info, then
-   Run anyway.
+   internet:
+
+     "The publisher could not be verified"   Click Run.
+     "Windows protected your PC"             Click More info, then
+                                             Run anyway.
 
 3. Unzip the folder and double-click Run-PulseVerify.bat.
 

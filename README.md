@@ -17,7 +17,9 @@ from the latest release. The same steps ship in the zip as `README.txt`.
    (same VLAN, same switch port profile, same firewall policy). Guest Wi-Fi or
    a staff VLAN will give you the wrong answer.
 2. Unblock the zip (right-click, Properties, tick **Unblock**), unzip it and
-   double-click `Run-PulseVerify.bat`.
+   double-click `Run-PulseVerify.bat`. If Windows says the publisher could
+   not be verified, click **Run**; if it says "Windows protected your PC",
+   click **More info**, then **Run anyway**.
    **Note:** the tool first shows this computer's IP configuration. Verify it
    matches the Pixellot's network (IP range, gateway, DNS) before continuing
    with the test.

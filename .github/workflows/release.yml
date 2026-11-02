@@ -53,7 +53,8 @@ jobs:
             "Network check for venue IT teams: confirms the firewall rules in the [NFHS Network firewall article](https://support.nfhsnetwork.com/s/article/Network-and-Firewall-Setup-NFHS) are in place before the VPU arrives." '' \
             '1. Download `pulse-verify.zip`.' \
             '2. Right-click it, choose Properties, tick Unblock, and click OK.' \
-            '3. Unzip it on a Windows computer plugged into the VPU'"'"'s network, and double-click `Run-PulseVerify.bat`.' '' \
+            '3. Unzip it on a Windows computer plugged into the VPU'"'"'s network, and double-click `Run-PulseVerify.bat`.' \
+            '4. If Windows says the publisher could not be verified, click **Run**. If it says "Windows protected your PC", click **More info**, then **Run anyway**.' '' \
             'No install and no admin rights needed. Outbound connections only.' '' \
             "SHA-256 of \`pulse-verify.zip\`: \`${SHA}\`" \
             > RELEASE_BODY.md
