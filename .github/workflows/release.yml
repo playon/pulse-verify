@@ -1,0 +1,71 @@
+# Package pulse-verify and publish it as a GitHub release.
+#
+# Push a tag v<version> (matching $ToolVersion in Test-PulseVerify.ps1) to
+# publish. The NFHS firewall article links to
+#   https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify.zip
+# so the asset name must stay pulse-verify.zip. Older releases are kept.
+#
+# A workflow_dispatch run builds the zip as a workflow artifact and
+# publishes nothing.
+
+name: Release
+
+on:
+  push:
+    tags: [ "v*" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Build zip
+        run: ./build.sh
+
+      - name: Check tag matches the script version
+        if: github.ref_type == 'tag'
+        run: |
+          VERSION=$(sed -n "s/^\$ToolVersion = '\([^']*\)'.*/\1/p" Test-PulseVerify.ps1)
+          if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match \$ToolVersion ${VERSION} in Test-PulseVerify.ps1"
+            exit 1
+          fi
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-verify
+          path: |
+            dist/pulse-verify.zip
+            dist/pulse-verify.zip.sha256
+
+      - name: Assemble release body
+        if: github.ref_type == 'tag'
+        run: |
+          SHA=$(cut -d' ' -f1 dist/pulse-verify.zip.sha256)
+          printf '%s\n' \
+            "Network check for venue IT teams: confirms the firewall rules in the [NFHS Network firewall article](https://support.nfhsnetwork.com/s/article/Network-and-Firewall-Setup-NFHS) are in place before the VPU arrives." '' \
+            '1. Download `pulse-verify.zip`.' \
+            '2. Right-click it, choose Properties, tick Unblock, and click OK.' \
+            '3. Unzip it on a Windows computer plugged into the VPU'"'"'s network, and double-click `Run-PulseVerify.bat`.' '' \
+            'No install and no admin rights needed. Outbound connections only.' '' \
+            "SHA-256 of \`pulse-verify.zip\`: \`${SHA}\`" \
+            > RELEASE_BODY.md
+          cat RELEASE_BODY.md
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/pulse-verify.zip
+            dist/pulse-verify.zip.sha256
+          tag_name: ${{ github.ref_name }}
+          name: pulse-verify ${{ github.ref_name }}
+          body_path: RELEASE_BODY.md

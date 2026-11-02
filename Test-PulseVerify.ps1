@@ -44,7 +44,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ToolVersion = '0.9.0'
+$ToolVersion = '1.0.0'
 $script:LogPath = $null
 
 # ---------------------------------------------------------------- helpers

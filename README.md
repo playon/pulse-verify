@@ -10,10 +10,14 @@ Pulse.
 
 ## For IT teams
 
+Download [`pulse-verify.zip`](https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify.zip)
+from the latest release. The same steps ship in the zip as `README.txt`.
+
 1. Plug a Windows laptop into the **same network segment the VPU will use**
    (same VLAN, same switch port profile, same firewall policy). Guest Wi-Fi or
    a staff VLAN will give you the wrong answer.
-2. Unzip this folder and double-click `Run-PulseVerify.bat`.
+2. Unblock the zip (right-click, Properties, tick **Unblock**), unzip it and
+   double-click `Run-PulseVerify.bat`.
    **Note:** the tool first shows this computer's IP configuration. Verify it
    matches the Pixellot's network (IP range, gateway, DNS) before continuing
    with the test.
@@ -94,6 +98,23 @@ The verdict is **Not ready** when any critical or high probe fails,
 **Ready, with items to check** when only warnings remain (for example the
 speed test site could not be reached), and **Ready** otherwise.
 
+## Releasing
+
+The NFHS firewall article links to
+`https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify.zip`,
+which always serves the newest release. Keep the asset name `pulse-verify.zip`.
+
+1. Set `$ToolVersion` in `Test-PulseVerify.ps1` and commit.
+2. Run `./build.sh` to check what will ship. It writes `dist/pulse-verify.zip`
+   (`Run-PulseVerify.bat`, `Test-PulseVerify.ps1`, `endpoints.json`,
+   `README.txt`) and its `.sha256`, and fails on any non-ASCII byte.
+3. Tag and push: `git tag v<version> && git push origin v<version>`.
+   `.github/workflows/release.yml` builds the zip, checks that the tag matches
+   `$ToolVersion`, and publishes the release with the checksum in its notes.
+
+When the NFHS article's rules change, update `endpoints.json` and release.
+`README.txt` is the copy IT reads; keep it in step with "For IT teams" above.
+
 ## TODO
 
 - [x] Name the inspection vendor from a replaced certificate's issuer.
@@ -104,6 +125,8 @@ speed test site could not be reached), and **Ready** otherwise.
       second provider or multiple streams.
 - [ ] Have Pulse read `endpoints.json` instead of its hardcoded lists.
 - [ ] Generate the customer-facing domain/port doc from `endpoints.json`.
-- [ ] Packaging: a signed zip, or a single `.ps1` with the JSON embedded.
+- [x] Packaging: a zip published on GitHub Releases.
+- [ ] Sign `Test-PulseVerify.ps1` (Authenticode) so security tools and
+      `RemoteSigned` policies accept it without `-ExecutionPolicy Bypass`.
 - [ ] Optional: upload the report to PlayOn so support sees results without
       waiting for an email.

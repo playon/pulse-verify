@@ -1,3 +1,4 @@
 logs/
 reports/
 .DS_Store
+dist/
