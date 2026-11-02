@@ -187,13 +187,18 @@ function Resolve-HostAddresses([string]$HostName) {
     $r
 }
 
+function Get-RuleDomains($Rules) {
+    # The wildcard domains named in the rules, in rule order.
+    @($Rules | ForEach-Object { $_.destination -split ',\s*' } | Where-Object { $_.StartsWith('*.') } | Select-Object -Unique)
+}
+
 function Get-DomainAddresses($Endpoints) {
     # The required domains are wildcards, which can't be looked up, so this
     # resolves each host the probes use under each domain. Hosts outside the
     # required domains (8.8.8.8, the public RTMP stand-in) are left out.
     $hosts = @(@($Endpoints.dns) + @($Endpoints.ports) + @($Endpoints.tls) |
         ForEach-Object { $_.host } | Where-Object { $_ -notmatch '^[\d.]+$' } | Select-Object -Unique)
-    foreach ($d in $Endpoints.requirements.domains) {
+    foreach ($d in (Get-RuleDomains $Endpoints.requirements.rules)) {
         $suffix = $d -replace '^\*\.', ''
         $mine = @($hosts | Where-Object { $_ -eq $suffix -or $_.EndsWith(".$suffix") } | Sort-Object)
         $rows = foreach ($hn in $mine) {
@@ -844,6 +849,81 @@ function Get-ChangeGroups($Results, $Services) {
     return @($groups | Sort-Object rank, svc)
 }
 
+function Get-RuleSheet($Rules, $Results) {
+    # One row per firewall rule, with this run's result beside it, so IT can
+    # copy the rules into the firewall and see which ones are already in
+    # effect. A rule's priority is that of its most severe check; a rule no
+    # check tests is shown as not tested rather than passed.
+    foreach ($rule in $Rules) {
+        $mine = @($Results | Where-Object { $_.ruleId -eq $rule.id })
+        $failed = @($mine | Where-Object { $_.status -eq 'fail' })
+        $warned = @($mine | Where-Object { $_.status -eq 'warn' })
+        $tested = @($mine | ForEach-Object { ($_.target -split ' -> ')[-1] } | Select-Object -Unique)
+        if ($rule.optional) { $priority = 'Optional' }
+        elseif ($mine.Count -gt 0) {
+            $rank = ($mine | ForEach-Object { Get-SeverityRank $_.severity } | Measure-Object -Minimum).Minimum
+            $priority = @('Critical', 'High', 'Medium', '')[[int]$rank]
+        }
+        else { $priority = '' }
+        $evidence = { param($set) ($set | ForEach-Object { "$($_.category) $($_.target -replace ' -> ', ' to '): $(Get-ShortNote $_)" }) -join '; ' }
+        if ($mine.Count -eq 0) {
+            $status = 'untested'
+            $summary = 'No check in this tool covers this rule.'
+        }
+        elseif ($failed.Count -gt 0) {
+            $status = 'fail'
+            $summary = if ($mine.Count -eq 1) { "Failed: $(& $evidence $failed)." }
+                else { "$($failed.Count) of $($mine.Count) checks failed: $(& $evidence $failed)." }
+        }
+        elseif ($warned.Count -gt 0) {
+            $status = 'warn'
+            $summary = "Could not confirm: $(& $evidence $warned)."
+        }
+        else {
+            $status = 'pass'
+            $summary = if ($mine.Count -eq 1) { 'Check passed.' } else { "All $($mine.Count) checks passed." }
+        }
+        [pscustomobject]@{
+            id          = $rule.id
+            priority    = $priority
+            protocol    = $rule.protocol
+            port        = [string]$rule.port
+            destination = $rule.destination
+            inspection  = [bool]$rule.inspection
+            purpose     = $rule.purpose
+            note        = $rule.note
+            optional    = $rule.optional
+            status      = $status
+            summary     = $summary
+            tested      = $tested
+        }
+    }
+}
+
+function Write-RuleCsv($Rows, [string]$Path) {
+    # The rule sheet as a spreadsheet, to import or forward to whoever runs
+    # the firewall. ASCII text, so Excel opens it the same with or without
+    # a BOM.
+    $word = @{ pass = 'PASS'; fail = 'FAIL'; warn = 'WARN'; untested = 'Not tested' }
+    $csv = $Rows | ForEach-Object {
+        [pscustomobject]@{
+            'Priority'                   = $_.priority
+            'Direction'                  = 'Outbound'
+            'Source'                     = 'Pixellot (its IP address or VLAN)'
+            'Protocol'                   = $_.protocol
+            'Port'                       = $_.port
+            'Destination'                = $_.destination
+            'Exempt from SSL inspection' = $(if ($_.inspection) { 'Yes' } else { '' })
+            'Needed for'                 = $_.purpose
+            'Notes'                      = $_.note
+            'Result this run'            = $word[$_.status]
+            'Details'                    = $_.summary
+            'Tested against'             = ($_.tested -join ', ')
+        }
+    } | ConvertTo-Csv -NoTypeInformation
+    [System.IO.File]::WriteAllText($Path, (($csv -join "`r`n") + "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
+}
+
 function Write-HtmlReport($Report, [string]$Path) {
     # Reading order follows the IT admin's task: the verdict, what to change,
     # where the test ran (so the result can be trusted), what this tool can't
@@ -943,16 +1023,30 @@ function Write-HtmlReport($Report, [string]$Path) {
 
     # ---- the rules themselves, from the NFHS article, so the report is
     # self-contained when it is emailed or printed
+    # One row per rule, with this run's result, so the sheet doubles as a
+    # checklist: rows that passed are already in effect.
     $reqHtml = ''
-    if ($Report.requirements) {
-        $portRows = ($Report.requirements.ports | ForEach-Object {
-            "<tr><td data-label='Protocol'>$($_.protocol)</td><td data-label='Port'>$($_.port)</td><td data-label='Used for'>$(& $h $_.purpose)</td></tr>"
-        }) -join ''
-        $domainList = ($Report.requirements.domains | ForEach-Object { '<li><code>' + (& $h $_) + '</code></li>' }) -join ''
-        $reqHtml = "<section aria-labelledby='req-h'><h2 id='req-h'>Firewall rules for the Pixellot</h2>" +
-            "<p class='lede'>From the NFHS Network firewall article. All connections are outbound; no inbound rules are needed. Bypass SSL/TLS inspection for these domains, and don't rate-limit the Pixellot or put it on an internet sleep schedule.</p>" +
-            "<div class='req-grid'><table class='req stack'><caption>Outbound ports</caption><thead><tr><th scope='col'>Protocol</th><th scope='col'>Port</th><th scope='col'>Used for</th></tr></thead><tbody>$portRows</tbody></table>" +
-            "<div><h3>Domains to allow</h3><ul class='domains'>$domainList</ul><p class='sub'>Use domain (FQDN) rules: streaming servers are assigned per event from changing cloud addresses.</p></div></div></section>"
+    if ($Report.rules) {
+        $ruleWord = @{ pass = 'PASS'; fail = 'FAIL'; warn = 'WARN' }
+        $ruleRows = foreach ($r in $Report.rules) {
+            $pri = if ($r.priority) { "<span class='sev sev-$($r.priority.ToLower())'>$($r.priority)</span>" } else { '' }
+            if ($r.optional) { $pri += "<span class='sub'>$(& $h $r.optional)</span>" }
+            $dest = (($r.destination -split ',\s*') | ForEach-Object { '<code>' + (& $h $_) + '</code>' }) -join '<br>'
+            if ($r.note) { $dest += "<span class='sub'>$(& $h $r.note)</span>" }
+            $ssl = if ($r.inspection) { 'Exempt' } else { "<span class='muted'>&mdash;</span>" }
+            $res = if ($r.status -eq 'untested') { "<span class='muted'>Not tested</span>" }
+                else { "<span class='tag tag-$($r.status)'>$($ruleWord[$r.status])</span>" }
+            $res += "<span class='sub'>$(& $h $r.summary)</span>"
+            "<tr class='rule-$($r.status)'><td data-label='Priority'>$pri</td><td data-label='Port' class='port'>$($r.protocol) $(& $h $r.port)</td>" +
+                "<td data-label='Destination'>$dest</td><td data-label='Needed for'>$(& $h $r.purpose)</td>" +
+                "<td data-label='SSL inspection'>$ssl</td><td data-label='This run' class='res'>$res</td></tr>"
+        }
+        $csvLink = if ($Report.rulesCsv) { " The same sheet is saved as <a href='$(& $h $Report.rulesCsv)'>$(& $h $Report.rulesCsv)</a>, to import or forward to whoever manages the firewall." } else { '' }
+        $docLink = if ($Report.docUrl) { "<a href='$(& $h $Report.docUrl)'>NFHS Network firewall article</a>" } else { 'NFHS Network firewall article' }
+        $reqHtml = "<section aria-labelledby='req-h'><h2 id='req-h'>Firewall rule sheet</h2>" +
+            "<p class='lede'>Every rule the Pixellot needs, from the $docLink, with this run's result. Each rule is outbound from the Pixellot's IP address (or its VLAN); no inbound rules are needed. Don't rate-limit the Pixellot or put it on an internet sleep schedule.$csvLink</p>" +
+            "<table class='rules stack'><thead><tr><th scope='col'>Priority</th><th scope='col'>Port</th><th scope='col'>Destination</th><th scope='col'>Needed for</th><th scope='col'>SSL inspection</th><th scope='col'>This run</th></tr></thead><tbody>" +
+            ($ruleRows -join "`n") + '</tbody></table></section>'
     }
 
     # ---- current addresses behind each domain, for IP-based firewalls
@@ -1080,8 +1174,10 @@ details[open] summary{border-bottom:1px solid var(--line-soft)}
 details table td.res{white-space:nowrap;width:1%}
 footer{margin-top:var(--s7);padding-top:var(--s4);border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
 footer p{margin:0 0 var(--s1)}
-.req-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:var(--s5);align-items:start}
-ul.domains{margin:0 0 var(--s2);padding-left:var(--s5)}ul.domains li{margin:0 0 2px}
+.rules td.port{white-space:nowrap;font-weight:600}
+table.rules td:nth-child(3){min-width:240px;overflow-wrap:anywhere}
+table.rules td.res{min-width:180px}
+table.rules tr.rule-fail td.port{color:var(--fail)}
 code{font-family:Consolas,"Cascadia Mono",Menlo,monospace;font-size:13px}
 .muted{color:var(--muted)}
 table.addr td{overflow-wrap:anywhere}table.addr td[rowspan]{white-space:nowrap;border-right:1px solid var(--line-soft)}
@@ -1103,7 +1199,11 @@ dl,.note,.meta,summary,footer{line-height:1.5}
   table.changes td:nth-child(-n+3)::before{display:none}
   table.changes td:nth-child(2)::after,table.changes td:nth-child(1)::after{content:" \00b7";color:var(--muted)}
   dl{grid-template-columns:1fr}dt{margin-top:var(--s2)}
-  .req-grid{grid-template-columns:1fr}
+  table.rules td:nth-child(3),table.rules td.res{min-width:0}
+  table.rules td:nth-child(-n+2){display:inline-block;padding-right:0}
+  table.rules td:nth-child(-n+2)::before{display:none}
+  table.rules td:nth-child(1)::after{content:" \00b7";color:var(--muted)}
+  table.rules td:nth-child(1) .sub{display:inline;margin-left:var(--s1)}
 }
 @media print{
   body{font-size:12px}main{max-width:none;padding:0}
@@ -1122,7 +1222,7 @@ $addrHtml
 $allHtml
 <footer>
 <p>pulse-verify v$($Report.toolVersion). Run this from the network segment the Pixellot will use; a result from another VLAN or guest Wi-Fi does not apply to it.</p>
-<p>Files from this run: $($files).html (this report), $($files).json (results data), $($files).log in the logs folder (timings and errors). Send them to NFHS Network support at help.nfhsnetwork.com.</p>
+<p>Files from this run: $($files).html (this report), $($files)-rules.csv (the firewall rule sheet), $($files).json (results data), $($files).log in the logs folder (timings and errors). Send them to NFHS Network support at help.nfhsnetwork.com.</p>
 </footer>
 </main>
 <script>window.addEventListener('beforeprint',function(){var d=document.querySelectorAll('details');for(var i=0;i<d.length;i++){d[i].open=true}});</script>
@@ -1160,6 +1260,7 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $script:LogPath = Join-Path $logDir "vpu-network-check-$stamp.log"
 $jsonPath = Join-Path $OutDir "vpu-network-check-$stamp.json"
 $htmlPath = Join-Path $OutDir "vpu-network-check-$stamp.html"
+$csvPath  = Join-Path $OutDir "vpu-network-check-$stamp-rules.csv"
 
 # Anything unexpected lands in the log with its stack before we exit.
 trap {
@@ -1292,6 +1393,7 @@ function Invoke-Check([string]$Label, $Entry, [scriptblock]$Check) {
     $r | Add-Member -NotePropertyName time        -NotePropertyValue $startedAt
     $r | Add-Member -NotePropertyName domain      -NotePropertyValue $Entry.domain
     $r | Add-Member -NotePropertyName path        -NotePropertyValue $Entry.path
+    $r | Add-Member -NotePropertyName ruleId      -NotePropertyValue $Entry.ruleId
     Write-Host $ConsoleTag[$r.status] -ForegroundColor $ConsoleTagColor[$r.status] -NoNewline
     Write-Host (' ' + (Get-ShortNote $r))
     Write-Log ("{0,-5} {1,-45} {2,-4} {3,-8} {4,6} ms  {5,-15} {6,-11} {7}" -f $r.category, $r.target, $r.status.ToUpper(), $r.severity, $sw.ElapsedMilliseconds, $r.ip, $r.outcome, $r.detail)
@@ -1323,7 +1425,7 @@ if ($runSpeed) {
 # Supplemental, not a check: the current addresses behind each required
 # domain, for firewalls that take IPs instead of names.
 $addresses = @()
-if ($endpoints.requirements.domains) {
+if ($endpoints.requirements.rules) {
     Write-Host ''
     Write-Host 'Looking up current IP addresses for the report'
     $addresses = @(Get-DomainAddresses $endpoints)
@@ -1344,6 +1446,7 @@ if ($endpoints.speedTest -and -not $runSpeed) {
 $failed = @($results | Where-Object { $_.status -eq 'fail' }).Count
 $warned = @($results | Where-Object { $_.status -eq 'warn' }).Count
 $verdict = Get-Verdict $results.ToArray() $endpoints.services
+$ruleSheet = @(Get-RuleSheet $endpoints.requirements.rules $results.ToArray())
 $report = [pscustomobject]@{
     toolVersion = $ToolVersion
     venue       = $Venue
@@ -1355,7 +1458,8 @@ $report = [pscustomobject]@{
     notTested   = $notTested
     patternNote = $endpoints.patternNote
     docUrl      = $endpoints.docUrl
-    requirements = $endpoints.requirements
+    rules       = $ruleSheet
+    rulesCsv    = [System.IO.Path]::GetFileName($csvPath)
     addresses   = $addresses
     addressInfo = [pscustomobject]@{ time = $addressTime; resolver = $script:Resolver }
     summary    = [pscustomobject]@{ total = $results.Count; failed = $failed; warned = $warned }
@@ -1366,8 +1470,10 @@ Write-Log "Verdict: $($verdict.headline)"
 foreach ($s in $verdict.services) { Write-Log ("  {0,-5} {1}: {2}" -f $s.status.ToUpper(), $s.name, $s.summary) }
 
 [System.IO.File]::WriteAllText($jsonPath, ($report | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
+Write-RuleCsv $ruleSheet $csvPath
 Write-HtmlReport $report $htmlPath
 Write-Log "Report: $htmlPath"
+Write-Log "Rules:  $csvPath"
 Write-Log "Data:   $jsonPath"
 
 # ---- console summary: verdict, services, changes, next steps --------------
@@ -1421,6 +1527,7 @@ if ($changes) {
 if ($endpoints.speedTest -and -not $runSpeed) {
     $steps += "The speed test was skipped. The Pixellot needs at least $($endpoints.speedTest.minMbps) Mbps download and upload; confirm this another way."
 }
+$steps += "The firewall rule sheet, with this run's result for each rule, is in the report and saved as $([System.IO.Path]::GetFileName($csvPath)) to import or forward."
 if ($addresses) {
     $steps += 'If the firewall needs IP addresses instead of domain names, the report lists the current addresses for each domain.'
 }

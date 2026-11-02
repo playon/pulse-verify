@@ -57,3 +57,10 @@ rejected, the time (to match firewall logs), and for SSL inspection the
 replacement certificate's subject, issuer, root, SHA-1 thumbprint and likely
 vendor. Requirements the tool can't test (for example `*.pixellot.stream`,
 which only exists during events) are listed at the end.
+
+The report also has a **firewall rule sheet**: one row per rule the Pixellot
+needs (protocol, port, destination, priority, whether to exempt it from SSL
+inspection), what to do if the firewall can't use wildcard domains, and this
+run's result for each rule. The same sheet is saved next to the report as
+`vpu-network-check-<time>-rules.csv`, to import or forward to whoever manages
+the firewall.

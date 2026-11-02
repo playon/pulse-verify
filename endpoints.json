@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "source": "Ported from playon/pulse Pulse.Web/scripts (Test-NetworkDomains, Test-NetworkPorts, Test-TlsInspection). Port list audited against Canopy connections.csv.",
   "notes": [
     "Zixi streaming goes to a broadcaster assigned per event from AWS pools, not to prod-echo. Allow UDP 443/2088 by port, not by destination IP.",
@@ -55,35 +55,40 @@
       "purpose": "NFHS Network",
       "service": "platform",
       "severity": "critical",
-      "domain": "*.nfhsnetwork.com"
+      "domain": "*.nfhsnetwork.com",
+      "ruleId": "nfhs-https"
     },
     {
       "host": "pixellot.tv",
       "purpose": "Pixellot cloud",
       "service": "cloud",
       "severity": "critical",
-      "domain": "*.pixellot.tv"
+      "domain": "*.pixellot.tv",
+      "ruleId": "pixellot-https"
     },
     {
       "host": "software.pixellot.tv",
       "purpose": "Pixellot software updates",
       "service": "cloud",
       "severity": "critical",
-      "domain": "*.pixellot.tv"
+      "domain": "*.pixellot.tv",
+      "ruleId": "pixellot-https"
     },
     {
       "host": "service.singular.live",
       "purpose": "Singular overlay service",
       "service": "graphics",
       "severity": "high",
-      "domain": "*.singular.live"
+      "domain": "*.singular.live",
+      "ruleId": "singular-https"
     },
     {
       "host": "secure.logmein.com",
       "purpose": "Remote support (LogMeIn)",
       "service": "remote",
       "severity": "high",
-      "domain": "*.logmein.com"
+      "domain": "*.logmein.com",
+      "ruleId": "logmein-https"
     }
   ],
   "docUrl": "https://support.nfhsnetwork.com/s/article/Network-and-Firewall-Setup-NFHS",
@@ -97,52 +102,110 @@
     "severity": "critical"
   },
   "requirements": {
-    "comment": "What IT is asked to allow, copied from docUrl (2026-08-18). Shown to the person running the check. The probe lists below are how we test these rules, not extra rules.",
-    "ports": [
+    "comment": "What IT is asked to allow, from docUrl (2026-08-18), one row per firewall rule. Every rule is outbound from the Pixellot. Each probe below names the rule it tests in ruleId; a rule no probe names is shown as not tested. The report and its CSV are built from this list.",
+    "rules": [
       {
+        "id": "dns",
         "protocol": "UDP",
         "port": "53",
-        "purpose": "DNS (the Pixellot uses 8.8.8.8 by default)"
+        "destination": "8.8.8.8",
+        "purpose": "Name lookups. The Pixellot uses 8.8.8.8 by default.",
+        "note": "If your network forces internal DNS, request a DNS change for the unit at help.nfhsnetwork.com."
       },
       {
-        "protocol": "UDP",
-        "port": "123",
-        "purpose": "Clock sync (NTP)"
-      },
-      {
+        "id": "pixellot-https",
         "protocol": "TCP",
         "port": "443",
-        "purpose": "Cloud services (HTTPS), remote management"
+        "destination": "*.pixellot.tv",
+        "purpose": "Pixellot cloud, management and software updates",
+        "inspection": true,
+        "note": "If your firewall can't use wildcard domains, allow the domain in the web filter or as a URL category (these match the HTTPS server name), or use the current IP addresses listed in this report."
       },
       {
+        "id": "nfhs-https",
+        "protocol": "TCP",
+        "port": "443",
+        "destination": "*.nfhsnetwork.com",
+        "purpose": "NFHS Network event scheduling and viewing",
+        "inspection": true,
+        "note": "If your firewall can't use wildcard domains, allow the domain in the web filter or as a URL category (these match the HTTPS server name), or use the current IP addresses listed in this report."
+      },
+      {
+        "id": "zixi-primary",
         "protocol": "UDP",
         "port": "2088",
-        "purpose": "Video streaming (Zixi), primary"
+        "destination": "*.pixellot.stream, *.pixellot.tv",
+        "purpose": "Live streaming (Zixi), primary path",
+        "note": "If your firewall can't use wildcard domains, allow UDP 2088 to any destination from the Pixellot. Streaming servers change every event, so a list of IP addresses goes out of date."
       },
       {
+        "id": "zixi-backup",
         "protocol": "UDP",
         "port": "443",
-        "purpose": "Video streaming (Zixi), backup"
+        "destination": "*.pixellot.stream, *.pixellot.tv",
+        "purpose": "Live streaming (Zixi), backup path",
+        "note": "If your firewall can't use wildcard domains, allow UDP 443 to any destination from the Pixellot. Streaming servers change every event, so a list of IP addresses goes out of date."
       },
       {
+        "id": "rtmp",
         "protocol": "TCP",
         "port": "1935",
-        "purpose": "Video streaming fallback (RTMP)"
+        "destination": "Any",
+        "purpose": "Live streaming (RTMP), last-resort path",
+        "note": "The RTMP servers (*.pixellot.stream) exist only during events, so allow the port to any destination."
       },
       {
+        "id": "ntp",
+        "protocol": "UDP",
+        "port": "123",
+        "destination": "*.pixellot.tv",
+        "purpose": "Clock sync (NTP)",
+        "note": "If your firewall can't use wildcard domains, allow UDP 123 to any destination from the Pixellot."
+      },
+      {
+        "id": "singular-https",
+        "protocol": "TCP",
+        "port": "443",
+        "destination": "*.singular.live",
+        "purpose": "Scoreboard graphics (Singular)",
+        "inspection": true,
+        "note": "If your firewall can't use wildcard domains, allow the domain in the web filter or as a URL category (these match the HTTPS server name), or use the current IP addresses listed in this report."
+      },
+      {
+        "id": "logmein-https",
+        "protocol": "TCP",
+        "port": "443",
+        "destination": "*.logmein.com",
+        "purpose": "Remote support (LogMeIn)",
+        "inspection": true,
+        "note": "If your firewall can't use wildcard domains, allow the domain in the web filter or as a URL category (these match the HTTPS server name), or use the current IP addresses listed in this report."
+      },
+      {
+        "id": "balena-https",
+        "protocol": "TCP",
+        "port": "443",
+        "destination": "*.balena-cloud.com",
+        "purpose": "Management and updates for Linux (balenaOS) units",
+        "inspection": true,
+        "note": "If your firewall can't use wildcard domains, allow the domain in the web filter or as a URL category (these match the HTTPS server name), or use the current IP addresses listed in this report."
+      },
+      {
+        "id": "balena-cloudlink",
+        "protocol": "TCP",
+        "port": "443",
+        "destination": "cloudlink.balena-cloud.com",
+        "purpose": "Remote management tunnel for Linux (balenaOS) units",
+        "inspection": true,
+        "note": "OpenVPN, not HTTPS, so web filters can't match it by name. Allow its current IP addresses, and don't block OpenVPN by application ID."
+      },
+      {
+        "id": "sportzcast",
         "protocol": "TCP",
         "port": "1400-1405",
-        "purpose": "SportzCast (SportzCast sites only, not tested)"
+        "destination": "*.sportzcast.net",
+        "purpose": "SportzCast scoreboard data",
+        "optional": "SportzCast sites only"
       }
-    ],
-    "domains": [
-      "*.nfhsnetwork.com",
-      "*.pixellot.stream",
-      "*.pixellot.tv",
-      "*.balena-cloud.com",
-      "*.logmein.com",
-      "*.singular.live",
-      "*.sportzcast.net"
     ]
   },
   "ports": [
@@ -155,7 +218,8 @@
       "rule": "Allow outbound UDP 53 to 8.8.8.8, the Pixellot's default DNS server. If your network forces internal DNS, request a DNS change for the unit at help.nfhsnetwork.com.",
       "service": "dns",
       "severity": "critical",
-      "domain": "8.8.8.8"
+      "domain": "8.8.8.8",
+      "ruleId": "dns"
     },
     {
       "protocol": "TCP",
@@ -165,7 +229,8 @@
       "probe": "connect",
       "service": "cloud",
       "severity": "critical",
-      "domain": "*.pixellot.tv"
+      "domain": "*.pixellot.tv",
+      "ruleId": "pixellot-https"
     },
     {
       "protocol": "TCP",
@@ -175,7 +240,8 @@
       "probe": "connect",
       "service": "cloud",
       "severity": "critical",
-      "domain": "*.pixellot.tv"
+      "domain": "*.pixellot.tv",
+      "ruleId": "pixellot-https"
     },
     {
       "protocol": "TCP",
@@ -185,7 +251,8 @@
       "probe": "connect",
       "service": "platform",
       "severity": "critical",
-      "domain": "*.nfhsnetwork.com"
+      "domain": "*.nfhsnetwork.com",
+      "ruleId": "nfhs-https"
     },
     {
       "protocol": "TCP",
@@ -195,7 +262,8 @@
       "probe": "connect",
       "service": "graphics",
       "severity": "high",
-      "domain": "*.singular.live"
+      "domain": "*.singular.live",
+      "ruleId": "singular-https"
     },
     {
       "protocol": "TCP",
@@ -205,7 +273,8 @@
       "probe": "connect",
       "service": "remote",
       "severity": "high",
-      "domain": "*.logmein.com"
+      "domain": "*.logmein.com",
+      "ruleId": "logmein-https"
     },
     {
       "protocol": "UDP",
@@ -216,7 +285,8 @@
       "service": "time",
       "severity": "high",
       "domain": "*.pixellot.tv",
-      "rule": "Allow outbound UDP 123 (NTP) to *.pixellot.tv. The Pixellot checks its clock against prod-echo.pixellot.tv."
+      "rule": "Allow outbound UDP 123 (NTP) to *.pixellot.tv. The Pixellot checks its clock against prod-echo.pixellot.tv.",
+      "ruleId": "ntp"
     },
     {
       "protocol": "UDP",
@@ -229,7 +299,8 @@
       "path": "primary",
       "severity": "critical",
       "consequence": "Primary streaming path. If only this is blocked, the stream falls back to UDP 443, then to RTMP (TCP 1935), which starts about 4 minutes late.",
-      "domain": "*.pixellot.stream, *.pixellot.tv"
+      "domain": "*.pixellot.stream, *.pixellot.tv",
+      "ruleId": "zixi-primary"
     },
     {
       "protocol": "UDP",
@@ -242,7 +313,8 @@
       "path": "backup",
       "severity": "high",
       "consequence": "Backup streaming path, used when UDP 2088 is blocked. If both are blocked, the stream falls back to RTMP (TCP 1935).",
-      "domain": "*.pixellot.stream, *.pixellot.tv"
+      "domain": "*.pixellot.stream, *.pixellot.tv",
+      "ruleId": "zixi-backup"
     },
     {
       "protocol": "TCP",
@@ -255,7 +327,8 @@
       "path": "last resort",
       "severity": "high",
       "consequence": "Last-resort streaming path. If UDP 2088, UDP 443 and this are all blocked, the broadcast never goes on air.",
-      "domain": "*.pixellot.stream"
+      "domain": "*.pixellot.stream",
+      "ruleId": "rtmp"
     },
     {
       "protocol": "TCP",
@@ -266,7 +339,8 @@
       "rule": "Allow outbound TCP 443 to cloudlink.balena-cloud.com. It is OpenVPN, not HTTPS: SNI/hostname filters cannot see it, so allow its resolved IPs, and exempt it from SSL inspection and application-ID blocking of OpenVPN.",
       "service": "remote",
       "severity": "high",
-      "domain": "*.balena-cloud.com"
+      "domain": "*.balena-cloud.com",
+      "ruleId": "balena-cloudlink"
     }
   ],
   "tls": [
@@ -275,98 +349,112 @@
       "purpose": "Singular graphics (apex)",
       "service": "graphics",
       "severity": "high",
-      "domain": "*.singular.live"
+      "domain": "*.singular.live",
+      "ruleId": "singular-https"
     },
     {
       "host": "app.singular.live",
       "purpose": "Singular graphics app",
       "service": "graphics",
       "severity": "high",
-      "domain": "*.singular.live"
+      "domain": "*.singular.live",
+      "ruleId": "singular-https"
     },
     {
       "host": "api.singular.live",
       "purpose": "Singular graphics API",
       "service": "graphics",
       "severity": "high",
-      "domain": "*.singular.live"
+      "domain": "*.singular.live",
+      "ruleId": "singular-https"
     },
     {
       "host": "datastream.singular.live",
       "purpose": "Singular graphics data feed",
       "service": "graphics",
       "severity": "high",
-      "domain": "*.singular.live"
+      "domain": "*.singular.live",
+      "ruleId": "singular-https"
     },
     {
       "host": "service.singular.live",
       "purpose": "Singular overlay service",
       "service": "graphics",
       "severity": "high",
-      "domain": "*.singular.live"
+      "domain": "*.singular.live",
+      "ruleId": "singular-https"
     },
     {
       "host": "pixellot.tv",
       "purpose": "Pixellot cloud",
       "service": "cloud",
       "severity": "critical",
-      "domain": "*.pixellot.tv"
+      "domain": "*.pixellot.tv",
+      "ruleId": "pixellot-https"
     },
     {
       "host": "software.pixellot.tv",
       "purpose": "Pixellot software updates",
       "service": "cloud",
       "severity": "critical",
-      "domain": "*.pixellot.tv"
+      "domain": "*.pixellot.tv",
+      "ruleId": "pixellot-https"
     },
     {
       "host": "secure.logmein.com",
       "purpose": "Remote support (LogMeIn)",
       "service": "remote",
       "severity": "high",
-      "domain": "*.logmein.com"
+      "domain": "*.logmein.com",
+      "ruleId": "logmein-https"
     },
     {
       "host": "api.balena-cloud.com",
       "purpose": "balenaOS device API (Linux units)",
       "service": "remote",
       "severity": "high",
-      "domain": "*.balena-cloud.com"
+      "domain": "*.balena-cloud.com",
+      "ruleId": "balena-https"
     },
     {
       "host": "registry2.balena-cloud.com",
       "purpose": "balenaOS software updates (Linux units)",
       "service": "cloud",
       "severity": "high",
-      "domain": "*.balena-cloud.com"
+      "domain": "*.balena-cloud.com",
+      "ruleId": "balena-https"
     },
     {
       "host": "registry-data.balena-cloud.com",
       "purpose": "balenaOS software updates (Linux units)",
       "service": "cloud",
       "severity": "high",
-      "domain": "*.balena-cloud.com"
+      "domain": "*.balena-cloud.com",
+      "ruleId": "balena-https"
     },
     {
       "host": "delta.balena-cloud.com",
       "purpose": "balenaOS update deltas (Linux units)",
       "service": "cloud",
       "severity": "high",
-      "domain": "*.balena-cloud.com"
+      "domain": "*.balena-cloud.com",
+      "ruleId": "balena-https"
     },
     {
       "host": "delta-data.balena-cloud.com",
       "purpose": "balenaOS update deltas (Linux units)",
       "service": "cloud",
       "severity": "high",
-      "domain": "*.balena-cloud.com"
+      "domain": "*.balena-cloud.com",
+      "ruleId": "balena-https"
     },
     {
       "host": "logs.balena-cloud.com",
       "purpose": "balenaOS device logs (Linux units)",
       "service": "remote",
       "severity": "high",
-      "domain": "*.balena-cloud.com"
+      "domain": "*.balena-cloud.com",
+      "ruleId": "balena-https"
     }
   ],
   "patternNote": "SSL inspection bypass lists match by pattern. Exempting app.singular.live or *.app.singular.live does not cover datastream.singular.live, so exempt the whole *.singular.live (and each domain listed) rather than individual hosts.",

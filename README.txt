@@ -42,6 +42,10 @@ How to run it
    Fix anything under "Changes needed", starting at row 1, then run it
    again.
 
+   The report also has a firewall rule sheet: every rule the VPU needs,
+   with this run's result for each. It is saved next to the report as a
+   .csv file, to import or forward to whoever manages the firewall.
+
 
 What's in this folder
 ---------------------
