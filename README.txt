@@ -32,6 +32,8 @@ How to run it
    the Pixellot's network (IP range, gateway, DNS) before continuing.
 
 5. Answer the questions. Answer ? if you are not sure; the report notes it.
+   If you say yes to reviewing the firewall article, it opens in your web
+   browser.
 
 6. The report opens in your browser. It starts with a verdict:
 

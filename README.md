@@ -24,8 +24,9 @@ from the latest release. The same steps ship in the zip as `README.txt`.
    matches the Pixellot's network (IP range, gateway, DNS) before continuing
    with the test.
 3. Answer the questions: whether this computer is on the Pixellot's VLAN,
-   whether the Pixellot has its own VLAN, whether the firewall rules are set
-   up, and whether to run the speed test. Answer `?` if you are not sure; the
+   whether the Pixellot has its own VLAN, whether to review the NFHS Network
+   firewall article (yes opens it in your browser), whether the firewall
+   rules are set up, and whether to run the speed test. Answer `?` if you are not sure; the
    report notes it. On a Pixellot itself, the VLAN question is skipped.
 4. The report opens in your browser. It starts with a verdict (**Ready**,
    **Ready, with items to check**, or **Not ready**) and a line per service.

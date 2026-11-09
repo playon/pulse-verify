@@ -44,7 +44,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ToolVersion = '1.0.2'
+$ToolVersion = '1.0.3'
 $script:LogPath = $null
 
 # ---------------------------------------------------------------- helpers
@@ -688,7 +688,26 @@ function Invoke-PreTestQuestions($Endpoints, [bool]$OnPixellot, [string]$PresetV
 
     Write-Host ''
     Write-Wrapped 'The firewall rules the Pixellot needs are in the NFHS Network article below, and the report will list them too.'
-    if ($Endpoints.docUrl) { Write-Host "  $($Endpoints.docUrl)" }
+    if ($Endpoints.docUrl) {
+        Write-Host "  $($Endpoints.docUrl)"
+        Write-Host ''
+        Write-Wrapped 'Saying yes opens the NFHS Network knowledge base article in your web browser.'
+        if ((Read-Answer 'Would you like to review the firewall article now?' -NoUnsure) -eq 'yes') {
+            # Only an https link is handed to Start-Process, which would
+            # otherwise run whatever program or file the string names.
+            $opened = $false
+            if ($Endpoints.docUrl -match '^https://') {
+                try { Start-Process $Endpoints.docUrl; $opened = $true }
+                catch { Write-Log "Could not open docUrl in the browser: $($_.Exception.Message)" }
+            }
+            if ($opened) {
+                Write-Wrapped 'Opened in your browser. Come back to this window when you are ready to continue.' '  ' 'Green'
+            }
+            else {
+                Write-Wrapped 'Could not open the browser. Copy the link above into a browser to read the article.' '  ' 'Yellow'
+            }
+        }
+    }
     Write-Host ''
     $ans.rulesConfigured = Read-Answer 'Has your network team set up these firewall rules for the Pixellot?'
     if ($ans.rulesConfigured -ne 'yes') {
