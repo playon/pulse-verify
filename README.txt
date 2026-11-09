@@ -7,10 +7,6 @@ lets it stream, update and be supported. Run it before the VPU arrives.
 The firewall rules it checks are in the NFHS Network article:
 https://support.nfhsnetwork.com/s/article/Network-and-Firewall-Setup-NFHS
 
-No install and no admin rights needed. It makes outbound connections only
-and changes nothing on this computer. It takes about a minute.
-
-
 How to run it
 -------------
 
@@ -18,24 +14,16 @@ How to run it
    will use (same VLAN, same switch port profile, same firewall policy).
    Guest Wi-Fi or a staff VLAN will give you the wrong answer.
 
-2. Before unzipping, right-click the zip, choose Properties, tick Unblock
-   and click OK. Otherwise Windows may warn about running a file from the
-   internet:
+2. Unzip the folder and double-click Run-PulseVerify.bat.
 
-     "The publisher could not be verified"   Click Run.
-     "Windows protected your PC"             Click More info, then
-                                             Run anyway.
-
-3. Unzip the folder and double-click Run-PulseVerify.bat.
-
-4. The tool first shows this computer's IP configuration. Check it matches
+3. The tool first shows this computer's IP configuration. Check it matches
    the Pixellot's network (IP range, gateway, DNS) before continuing.
 
-5. Answer the questions. Answer ? if you are not sure; the report notes it.
+4. Answer the questions. Answer ? if you are not sure; the report notes it.
    If you say yes to reviewing the firewall article, it opens in your web
    browser.
 
-6. The report opens in your browser. It starts with a verdict:
+5. The report opens in your browser. It starts with a verdict:
 
      Ready                         Nothing to change.
      Ready, with items to check    Works, but look at the items listed.
