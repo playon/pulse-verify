@@ -45,7 +45,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ToolVersion = '1.1.1'
+$ToolVersion = '1.1.2'
 $script:LogPath = $null
 
 # ---------------------------------------------------------------- helpers
@@ -1667,7 +1667,8 @@ if ($changes) {
 $steps = @()
 if ($changes) {
     $steps += 'Open the full report for the evidence behind each change: the IP addresses tried, the times (to match your firewall logs) and certificate details.'
-    $steps += 'After making the changes, run Run-PulseVerify.bat again.'
+    $launcher = if (Test-IsMacOS) { 'Run-PulseVerify.command' } else { 'Run-PulseVerify.bat' }
+    $steps += "After making the changes, run $launcher again."
 }
 if ($endpoints.speedTest -and -not $runSpeed) {
     $steps += "The speed test was skipped. The Pixellot needs at least $($endpoints.speedTest.minMbps) Mbps download and upload; confirm this another way."

@@ -36,9 +36,15 @@ export POWERSHELL_UPDATECHECK=Off
 export POWERSHELL_CLI_TELEMETRY_OPTOUT=1
 
 "$PWSH" -NoProfile -NoLogo -File ./Test-PulseVerify.ps1 "$@"
+rc=$?
 
-latest=$(ls -t reports/vpu-network-check-*.html 2>/dev/null | head -1)
-[[ -n "$latest" ]] && open "$latest"
+# Exit 0 (ready) or 1 (not ready) means this run wrote a report. 2 and up
+# (stopped at a question, missing file, error) wrote none, so don't reopen
+# an older report from the folder.
+if (( rc <= 1 )); then
+  latest=$(ls -t reports/vpu-network-check-*.html 2>/dev/null | head -1)
+  [[ -n "$latest" ]] && open "$latest"
+fi
 
 echo
 read -k1 "?Press any key to close this window..."
