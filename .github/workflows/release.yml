@@ -3,7 +3,8 @@
 # Push a tag v<version> (matching $ToolVersion in Test-PulseVerify.ps1) to
 # publish. The NFHS firewall article links to
 #   https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify.zip
-# so the asset name must stay pulse-verify.zip. Older releases are kept.
+#   https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify-macos.zip
+# so those asset names must stay the same. Older releases are kept.
 #
 # A workflow_dispatch run builds the zip as a workflow artifact and
 # publishes nothing.
@@ -44,19 +45,30 @@ jobs:
           path: |
             dist/pulse-verify.zip
             dist/pulse-verify.zip.sha256
+            dist/pulse-verify-macos.zip
+            dist/pulse-verify-macos.zip.sha256
 
       - name: Assemble release body
         if: github.ref_type == 'tag'
         run: |
           SHA=$(cut -d' ' -f1 dist/pulse-verify.zip.sha256)
+          MAC_SHA=$(cut -d' ' -f1 dist/pulse-verify-macos.zip.sha256)
+          PWSH_VERSION=$(sed -n 's/^PWSH_VERSION=//p' build.sh)
           printf '%s\n' \
             "Network check for venue IT teams: confirms the firewall rules in the [NFHS Network firewall article](https://support.nfhsnetwork.com/s/article/Network-and-Firewall-Setup-NFHS) are in place before the VPU arrives." '' \
+            '### Windows' '' \
             '1. Download `pulse-verify.zip`.' \
             '2. Right-click it, choose Properties, tick Unblock, and click OK.' \
             '3. Unzip it on a Windows computer plugged into the VPU'"'"'s network, and double-click `Run-PulseVerify.bat`.' \
             '4. If Windows says the publisher could not be verified, click **Run**. If it says "Windows protected your PC", click **More info**, then **Run anyway**.' '' \
+            '### macOS (Apple Silicon and Intel)' '' \
+            '1. Download `pulse-verify-macos.zip` on a Mac plugged into the VPU'"'"'s network and unzip it.' \
+            '2. Double-click `Run-PulseVerify.command` in the `pulse-verify-macos` folder.' \
+            '3. The first time, macOS says it "Not Opened". Click **Done**, open **System Settings**, choose **Privacy & Security**, and click **Open Anyway** next to Run-PulseVerify.command. On macOS 14 and earlier, Control-click the file and choose **Open**.' '' \
+            'The Mac zip includes Microsoft'"'"'s portable PowerShell '"${PWSH_VERSION}"' (signed by Microsoft) to run the checks.' '' \
             'No install and no admin rights needed. Outbound connections only.' '' \
             "SHA-256 of \`pulse-verify.zip\`: \`${SHA}\`" \
+            "SHA-256 of \`pulse-verify-macos.zip\`: \`${MAC_SHA}\`" \
             > RELEASE_BODY.md
           cat RELEASE_BODY.md
 
@@ -67,6 +79,8 @@ jobs:
           files: |
             dist/pulse-verify.zip
             dist/pulse-verify.zip.sha256
+            dist/pulse-verify-macos.zip
+            dist/pulse-verify-macos.zip.sha256
           tag_name: ${{ github.ref_name }}
           name: pulse-verify ${{ github.ref_name }}
           body_path: RELEASE_BODY.md

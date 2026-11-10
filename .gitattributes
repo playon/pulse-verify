@@ -5,3 +5,5 @@
 *.txt text eol=crlf
 *.sh text eol=lf
 *.yml text eol=lf
+*.command text eol=lf
+README-macOS.txt text eol=lf

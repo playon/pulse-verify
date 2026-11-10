@@ -3,8 +3,9 @@
 .SYNOPSIS
     Pre-deployment network check for a PlayOn / Pixellot VPU.
 .DESCRIPTION
-    Run from any Windows laptop plugged into the network segment (VLAN / switch
-    port) the VPU will use. Checks DNS, the required TCP/UDP egress, and TLS
+    Run from any Windows laptop or Mac plugged into the network segment (VLAN /
+    switch port) the VPU will use. On Windows it runs under the built-in
+    PowerShell 5.1; on macOS under the PowerShell 7 bundled in the Mac zip. Checks DNS, the required TCP/UDP egress, and TLS
     interception against the list in endpoints.json, then writes a pass/fail
     report (HTML + JSON) the venue's IT team can send back to PlayOn.
 
@@ -44,7 +45,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ToolVersion = '1.0.4'
+$ToolVersion = '1.1.0'
 $script:LogPath = $null
 
 # ---------------------------------------------------------------- helpers
@@ -532,27 +533,117 @@ function Test-Speed($Cfg, [string]$Direction) {
 
 # ---------------------------------------------------------------- context
 
+function Test-IsMacOS {
+    # $IsMacOS exists only in PowerShell 6+; on Windows PowerShell 5.1 it is
+    # unset, so read it without assuming it is there.
+    return [bool](Get-Variable -Name IsMacOS -ValueOnly -ErrorAction SilentlyContinue)
+}
+
+function Get-MacUplink {
+    # macOS counterpart of the Get-NetRoute / Get-NetAdapter lookups below:
+    # the interface holding the default route, using built-in tools only
+    # (route, ifconfig, ipconfig, networksetup, scutil). VPN tunnels are
+    # skipped so a VPN doesn't hide the real uplink, matching the Windows
+    # view. Returns $null if there is no uplink.
+    $vpn = '^(utun|ipsec|ppp|gif|stf|tun|tap)'
+    $dev = $null
+    $m = @(& /sbin/route -n get default 2>$null) | Select-String -Pattern '^\s*interface:\s*(\S+)' | Select-Object -First 1
+    if ($m) { $dev = $m.Matches[0].Groups[1].Value }
+    if (-not $dev -or $dev -match $vpn) {
+        # Next best: the first non-VPN interface in the system's service order.
+        $dev = $null
+        $nwi = @(& /usr/sbin/scutil --nwi 2>$null) | Select-String -Pattern '^Network interfaces:\s*(.+)$' | Select-Object -First 1
+        if ($nwi) { $dev = @($nwi.Matches[0].Groups[1].Value -split '\s+' | Where-Object { $_ -and $_ -notmatch $vpn }) | Select-Object -First 1 }
+    }
+    if (-not $dev) { return $null }
+
+    $u = [ordered]@{ device = $dev; port = $null; mac = $null; ip = $null; mask = $null; gateway = $null; dns = @(); dhcp = $false; wifi = $false }
+
+    $g = @(& /sbin/route -n get -ifscope $dev default 2>$null) | Select-String -Pattern '^\s*gateway:\s*(\S+)' | Select-Object -First 1
+    if ($g) { $u.gateway = $g.Matches[0].Groups[1].Value }
+
+    # ifconfig prints the mask as hex (0xffffff00); a link-local 169.254
+    # address is used only if there is nothing else.
+    $inet = @()
+    foreach ($line in @(& /sbin/ifconfig $dev 2>$null)) {
+        if ($line -match '^\s*ether\s+(\S+)') { $u.mac = $Matches[1] }
+        elseif ($line -match '^\s*inet\s+(\d+\.\d+\.\d+\.\d+)\s+netmask\s+0x([0-9a-fA-F]{8})') {
+            $hex = $Matches[2]
+            $inet += [pscustomobject]@{ ip = $Matches[1]; mask = ((0..3 | ForEach-Object { [Convert]::ToInt32($hex.Substring($_ * 2, 2), 16) }) -join '.') }
+        }
+    }
+    $pick = $inet | Where-Object { -not $_.ip.StartsWith('169.254.') } | Select-Object -First 1
+    if (-not $pick) { $pick = $inet | Select-Object -First 1 }
+    if ($pick) { $u.ip = $pick.ip; $u.mask = $pick.mask }
+
+    # A DHCP lease means DHCP; an address without one is static.
+    $packet = @(& /usr/sbin/ipconfig getpacket $dev 2>$null)
+    $u.dhcp = ($LASTEXITCODE -eq 0 -and $packet.Count -gt 0)
+
+    # The friendly name ("Wi-Fi", "USB 10/100/1000 LAN") is the hardware
+    # port. Its listing also has the real MAC: macOS hides it from ifconfig
+    # and .NET in some processes (pwsh among them), which then report the
+    # placeholder 02:00:00:00:00:00.
+    $port = $null; $hwMac = $null; $found = $false
+    foreach ($line in @(& /usr/sbin/networksetup -listallhardwareports 2>$null)) {
+        if ($line -match '^Hardware Port:\s*(.+?)\s*$') { if ($found) { break }; $port = $Matches[1]; $hwMac = $null }
+        elseif ($line -match '^Device:\s*(\S+)\s*$') { $found = ($Matches[1] -eq $dev) }
+        elseif ($line -match '^Ethernet Address:\s*(\S+)') { $hwMac = $Matches[1]; if ($found) { break } }
+    }
+    if ($found) {
+        $u.port = $port
+        if ((-not $u.mac -or $u.mac -eq '02:00:00:00:00:00') -and $hwMac -and $hwMac -ne 'N/A') { $u.mac = $hwMac }
+    }
+    $u.wifi = ($u.port -match 'Wi-Fi|AirPort')
+
+    # The uplink's own DNS servers are in its scoped resolver; the first
+    # unscoped resolver can belong to a VPN.
+    $scoped = $false; $ns = @()
+    foreach ($line in @(& /usr/sbin/scutil --dns 2>$null)) {
+        if ($line -match 'for scoped queries') { $scoped = $true; continue }
+        if (-not $scoped) { continue }
+        if ($line -match '^resolver #') { $ns = @(); continue }
+        if ($line -match 'nameserver\[\d+\]\s*:\s*(\d+\.\d+\.\d+\.\d+)\s*$') { $ns += $Matches[1]; continue }
+        if ($line -match 'if_index\s*:\s*\d+\s*\((\S+)\)' -and $Matches[1] -eq $dev) { $u.dns = @($ns); break }
+    }
+    return [pscustomobject]$u
+}
+
 function Get-NetContext {
     # Record where the test ran from, so a pass from guest Wi-Fi isn't
     # mistaken for a pass from the VPU's VLAN.
     $ctx = [ordered]@{ computer = [Environment]::MachineName; connection = $null; localIp = $null; gateway = $null; dns = $null; publicIp = $null }
-    try {
-        $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
-            Where-Object { $_.NextHop -and $_.NextHop -ne '0.0.0.0' } |
-            Sort-Object RouteMetric | Select-Object -First 1
-        if ($route) {
-            # Wi-Fi is rarely the Pixellot's segment, so flag it. NdisPhysicalMedium 9 = Native 802.11.
-            $adapter = Get-NetAdapter -InterfaceIndex $route.InterfaceIndex -ErrorAction SilentlyContinue
-            if ($adapter) {
-                $ctx.connection = if ($adapter.NdisPhysicalMedium -eq 9 -or $adapter.PhysicalMediaType -match '802\.11') { 'Wi-Fi' } else { 'Wired' }
+    if (Test-IsMacOS) {
+        try {
+            $u = Get-MacUplink
+            if ($u) {
+                $ctx.connection = if ($u.wifi) { 'Wi-Fi' } else { 'Wired' }
+                $ctx.gateway = $u.gateway
+                $ctx.localIp = $u.ip
+                $ctx.dns = $u.dns -join ', '
             }
-            $ctx.gateway = $route.NextHop
-            $ctx.localIp = (Get-NetIPAddress -InterfaceIndex $route.InterfaceIndex -AddressFamily IPv4 -ErrorAction Stop |
-                Select-Object -First 1).IPAddress
-            $ctx.dns = ((Get-DnsClientServerAddress -InterfaceIndex $route.InterfaceIndex -AddressFamily IPv4 -ErrorAction Stop).ServerAddresses) -join ', '
         }
+        catch { Write-Log "Network context unavailable: $($_.Exception.Message)" }
     }
-    catch { }   # non-Windows or no NetTCPIP module: leave nulls
+    else {
+        try {
+            $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
+                Where-Object { $_.NextHop -and $_.NextHop -ne '0.0.0.0' } |
+                Sort-Object RouteMetric | Select-Object -First 1
+            if ($route) {
+                # Wi-Fi is rarely the Pixellot's segment, so flag it. NdisPhysicalMedium 9 = Native 802.11.
+                $adapter = Get-NetAdapter -InterfaceIndex $route.InterfaceIndex -ErrorAction SilentlyContinue
+                if ($adapter) {
+                    $ctx.connection = if ($adapter.NdisPhysicalMedium -eq 9 -or $adapter.PhysicalMediaType -match '802\.11') { 'Wi-Fi' } else { 'Wired' }
+                }
+                $ctx.gateway = $route.NextHop
+                $ctx.localIp = (Get-NetIPAddress -InterfaceIndex $route.InterfaceIndex -AddressFamily IPv4 -ErrorAction Stop |
+                    Select-Object -First 1).IPAddress
+                $ctx.dns = ((Get-DnsClientServerAddress -InterfaceIndex $route.InterfaceIndex -AddressFamily IPv4 -ErrorAction Stop).ServerAddresses) -join ', '
+            }
+        }
+        catch { }   # no NetTCPIP module (Linux, or a stripped-down Windows): leave nulls
+    }
     try {
         $wc = New-Object System.Net.WebClient
         $ctx.publicIp = $wc.DownloadString('https://api.ipify.org').Trim()
@@ -570,9 +661,26 @@ function Get-IpConfig {
     # The uplink only: the adapter holding the default route. Camera NICs,
     # VPNs and virtual adapters are left out on purpose. Returns a list (0 or
     # 1 rows) so a future multi-adapter view needs no consumer changes.
-    # Windows-only cmdlets: returns an empty list elsewhere.
+    # Windows cmdlets, or built-in tools on macOS (Get-MacUplink); returns an
+    # empty list elsewhere.
     $rows = New-Object System.Collections.Generic.List[object]
     try {
+        if (Test-IsMacOS) {
+            $u = Get-MacUplink
+            if (-not $u -or -not $u.gateway) { Write-Log 'No adapter has a default gateway'; return @() }
+            $rows.Add([pscustomobject]@{
+                adapter    = if ($u.port) { "$($u.port) ($($u.device))" } else { $u.device }
+                uplink     = $true
+                mac        = $u.mac
+                addressing = if ($u.dhcp) { 'DHCP' } elseif ($u.ip) { 'Static' } else { $null }
+                ipAddress  = $u.ip
+                subnetMask = $u.mask
+                gateway    = $u.gateway
+                dns1       = if ($u.dns.Count -ge 1) { $u.dns[0] } else { $null }
+                dns2       = if ($u.dns.Count -ge 2) { $u.dns[1] } else { $null }
+            })
+            return ,$rows.ToArray()
+        }
         $uplinkIdx = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
             Where-Object { $_.NextHop -and $_.NextHop -ne '0.0.0.0' } |
             Sort-Object RouteMetric | Select-Object -First 1).InterfaceIndex
@@ -610,7 +718,7 @@ function Get-IpConfig {
 
 function Show-IpConfig($Rows) {
     Write-Section "This computer's IP configuration"
-    if (-not $Rows -or $Rows.Count -eq 0) { Write-Host '  Not found: no adapter has a default gateway (or this is not Windows).' -ForegroundColor Yellow; return }
+    if (-not $Rows -or $Rows.Count -eq 0) { Write-Host '  Not found: no adapter has a default gateway, or the IP configuration could not be read.' -ForegroundColor Yellow; return }
     foreach ($r in $Rows) {
         Write-Host "  $($r.adapter)  (internet connection)" -ForegroundColor White
         Write-Host ("    MAC address  {0}" -f $r.mac)

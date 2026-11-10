@@ -10,16 +10,28 @@ Pulse.
 
 ## For IT teams
 
-Download [`pulse-verify.zip`](https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify.zip)
-from the latest release. The same steps ship in the zip as `README.txt`.
+Download the zip for your computer from the latest release. The same steps
+ship in each zip as `README.txt`.
 
-1. Plug a Windows laptop into the **same network segment the VPU will use**
+- **Windows:** [`pulse-verify.zip`](https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify.zip)
+- **macOS** (Apple Silicon and Intel): [`pulse-verify-macos.zip`](https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify-macos.zip).
+  It includes Microsoft's portable PowerShell 7 to run the checks, so it is
+  about 140 MB.
+
+1. Plug the laptop into the **same network segment the VPU will use**
    (same VLAN, same switch port profile, same firewall policy). Guest Wi-Fi or
    a staff VLAN will give you the wrong answer.
-2. Unblock the zip (right-click, Properties, tick **Unblock**), unzip it and
-   double-click `Run-PulseVerify.bat`. If Windows says the publisher could
-   not be verified, click **Run**; if it says "Windows protected your PC",
-   click **More info**, then **Run anyway**.
+2. Start the check:
+   - **Windows:** unblock the zip (right-click, Properties, tick **Unblock**),
+     unzip it and double-click `Run-PulseVerify.bat`. If Windows says the
+     publisher could not be verified, click **Run**; if it says "Windows
+     protected your PC", click **More info**, then **Run anyway**.
+   - **macOS:** unzip it and double-click `Run-PulseVerify.command` in the
+     `pulse-verify-macos` folder. The first time, macOS says it "Not Opened":
+     click **Done**, open **System Settings**, choose **Privacy & Security**
+     and click **Open Anyway**. On macOS 14 and earlier, Control-click the
+     file and choose **Open**.
+
    **Note:** the tool first shows this computer's IP configuration. Verify it
    matches the Pixellot's network (IP range, gateway, DNS) before continuing
    with the test.
