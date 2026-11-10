@@ -13,10 +13,11 @@ Pulse.
 Download the zip for your computer from the latest release. The same steps
 ship in each zip as `README.txt`.
 
-- **Windows:** [`pulse-verify.zip`](https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify.zip)
-- **macOS** (Apple Silicon and Intel): [`pulse-verify-macos.zip`](https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify-macos.zip).
+- **Windows 10 or 11:** [`pulse-verify.zip`](https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify.zip)
+- **macOS 15 (Sequoia) or later**, Apple Silicon or Intel: [`pulse-verify-macos.zip`](https://github.com/playon/pulse-verify/releases/latest/download/pulse-verify-macos.zip).
   It includes Microsoft's portable PowerShell 7 to run the checks, so it is
-  about 140 MB.
+  about 140 MB. macOS 15 is the oldest version Microsoft supports for the
+  .NET 10 runtime that PowerShell 7.6 uses.
 
 1. Plug the laptop into the **same network segment the VPU will use**
    (same VLAN, same switch port profile, same firewall policy). Guest Wi-Fi or
@@ -29,8 +30,7 @@ ship in each zip as `README.txt`.
    - **macOS:** unzip it and double-click `Run-PulseVerify.command` in the
      `pulse-verify-macos` folder. The first time, macOS says it "Not Opened":
      click **Done**, open **System Settings**, choose **Privacy & Security**
-     and click **Open Anyway**. On macOS 14 and earlier, Control-click the
-     file and choose **Open**.
+     and click **Open Anyway**.
 
    **Note:** the tool first shows this computer's IP configuration. Verify it
    matches the Pixellot's network (IP range, gateway, DNS) before continuing

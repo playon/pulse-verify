@@ -10,9 +10,10 @@ https://support.nfhsnetwork.com/s/article/Network-and-Firewall-Setup-NFHS
 How to run it
 -------------
 
-1. Use a Mac plugged into the same network segment the VPU will use
-   (same VLAN, same switch port profile, same firewall policy). Guest
-   Wi-Fi or a staff VLAN will give you the wrong answer.
+1. Use a Mac with macOS 15 (Sequoia) or later, Apple Silicon or Intel,
+   plugged into the same network segment the VPU will use (same VLAN,
+   same switch port profile, same firewall policy). Guest Wi-Fi or a
+   staff VLAN will give you the wrong answer.
 
 2. Unzip the download and double-click Run-PulseVerify.command in the
    pulse-verify-macos folder.
@@ -21,8 +22,6 @@ How to run it
    downloaded. Click Done, open System Settings, choose Privacy &
    Security, scroll down to Security and click Open Anyway next to
    Run-PulseVerify.command. Confirm with your password, then click Open.
-   (On macOS 14 and earlier: Control-click the file, choose Open, then
-   click Open.)
 
 3. A Terminal window opens. The tool first shows this computer's IP
    configuration. Check it matches the Pixellot's network (IP range,

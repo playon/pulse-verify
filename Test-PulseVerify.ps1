@@ -45,7 +45,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ToolVersion = '1.1.0'
+$ToolVersion = '1.1.1'
 $script:LogPath = $null
 
 # ---------------------------------------------------------------- helpers
@@ -1427,7 +1427,24 @@ Write-Log "SecurityProtocol: $([System.Net.ServicePointManager]::SecurityProtoco
 $onPixellot = Test-OnPixellot
 Write-Log "Running on a Pixellot: $onPixellot"
 
-Write-Host "VPU network check v$ToolVersion" -ForegroundColor Cyan
+# Same banner as the Pulse launcher (playon/pulse runners/run_pulse.bat), so
+# the two tools look like one family. 56 columns: fits an 80-column console.
+$banner = @'
+ .-----------------------------------------------------.
+ |                                                     |
+ | __________ ____ ___.____       ____________________ |
+ | \______   \    |   \    |     /   _____/\_   _____/ |
+ |  |     ___/    |   /    |     \_____  \  |    __)_  |
+ |  |    |   |    |  /|    |___  /        \ |        \ |
+ |  |____|   |______/ |_______ \/_______  //_______  / |
+ |                                                     |
+ '-----------------------------------------------------'
+                  VPU Network Check
+'@
+Write-Host ''
+foreach ($line in ($banner -split "`r?`n")) { Write-Host $line }
+Write-Host ''
+Write-Host "Pulse Verify v$ToolVersion" -ForegroundColor Cyan
 Write-Host 'Checks whether this network lets a Pixellot stream, update and be supported.'
 Write-Host 'It takes about a minute: a few questions, then about 40 seconds of tests.'
 if (-not $onPixellot) {
