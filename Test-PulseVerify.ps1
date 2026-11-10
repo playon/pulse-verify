@@ -44,7 +44,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$ToolVersion = '1.0.3'
+$ToolVersion = '1.0.4'
 $script:LogPath = $null
 
 # ---------------------------------------------------------------- helpers
@@ -1241,7 +1241,8 @@ $addrHtml
 $allHtml
 <footer>
 <p>pulse-verify v$($Report.toolVersion). Run this from the network segment the Pixellot will use; a result from another VLAN or guest Wi-Fi does not apply to it.</p>
-<p>Files from this run: $($files).html (this report), $($files)-rules.csv (the firewall rule sheet), $($files).json (results data), $($files).log in the logs folder (timings and errors). Send them to NFHS Network support at help.nfhsnetwork.com.</p>
+<p>Files from this run: $($files).html (this report), $($files)-rules.csv (the firewall rule sheet), $($files).json (results data), $($files).log in the logs folder (timings and errors).</p>
+<p>If you believe the information in this report is incorrect, contact NFHS Network support at <a href='https://help.nfhsnetwork.com'>help.nfhsnetwork.com</a> and attach this report ($($files).html). A network specialist will review it and help you.</p>
 </footer>
 </main>
 <script>window.addEventListener('beforeprint',function(){var d=document.querySelectorAll('details');for(var i=0;i<d.length;i++){d[i].open=true}});</script>
